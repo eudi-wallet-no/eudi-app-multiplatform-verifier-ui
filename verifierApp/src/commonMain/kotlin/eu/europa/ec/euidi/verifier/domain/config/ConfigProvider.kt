@@ -60,6 +60,7 @@ class ConfigProviderImpl(private val platformController: PlatformController) : C
             AttestationType.Pid -> listOf(DocumentMode.FULL, DocumentMode.CUSTOM)
             AttestationType.Mdl -> listOf(DocumentMode.FULL, DocumentMode.CUSTOM)
             AttestationType.EmployeeId -> listOf(DocumentMode.FULL, DocumentMode.CUSTOM)
+            AttestationType.Aldersbevis -> listOf(DocumentMode.FULL, DocumentMode.CUSTOM)
         }
     }
 
@@ -151,6 +152,11 @@ class ConfigProviderImpl(private val platformController: PlatformController) : C
                 ClaimItem("employment_start_date"),
                 ClaimItem("employment_type"),
                 ClaimItem("country_code"),
+            ),
+            AttestationType.Aldersbevis to listOf(
+                ClaimItem("age_over_16"),
+                ClaimItem("age_over_18"),
+                ClaimItem("portrait"),
             ),
         )
     )

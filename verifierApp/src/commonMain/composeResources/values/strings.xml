@@ -128,6 +128,7 @@
     <string name="document_type_pid">PID</string>
     <string name="document_type_mdl">mDL</string>
     <string name="document_type_employee_id">Employee ID</string>
+    <string name="document_type_aldersbevis">Aldersbevis</string>
 
     <!-- Document Claim Translations -->
     <string name="pid_family_name">Family Name(s)</string>
@@ -202,6 +203,10 @@
     <string name="employee_id_employment_start_date">Start Date</string>
     <string name="employee_id_employment_type">Employment Type</string>
     <string name="employee_id_country_code">Country</string>
+
+    <string name="aldersbevis_age_over_16">Over 16</string>
+    <string name="aldersbevis_age_over_18">Over 18</string>
+    <string name="aldersbevis_portrait">Bilde</string>
 
     <!-- Qr Scan -->
     <string name="qr_scan_screen_title">Device Engagement</string>
