@@ -62,6 +62,7 @@ import eu.europa.ec.euidi.verifier.presentation.ui.home.HomeViewModelContract.Ev
 import eu.europa.ec.euidi.verifier.presentation.ui.home.HomeViewModelContract.State
 import eu.europa.ec.euidi.verifier.presentation.utils.Constants
 import eudiverifier.verifierapp.generated.resources.Res
+import eudiverifier.verifierapp.generated.resources.home_screen_nfc_button_text
 import eudiverifier.verifierapp.generated.resources.home_screen_nfc_title
 import eudiverifier.verifierapp.generated.resources.home_screen_sticky_bottom_text
 import kotlinx.coroutines.flow.Flow
@@ -88,7 +89,8 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(stickyBottomPaddings),
                 enabled = state.isStickyButtonEnabled,
-                onClick = { viewModel.setEvent(Event.OnStickyButtonClicked) }
+                onQrClick = { viewModel.setEvent(Event.OnStickyButtonClicked) },
+                onNfcClick = { viewModel.setEvent(Event.OnNfcTapClicked) }
             )
         },
         contentErrorConfig = state.error,
@@ -160,19 +162,41 @@ private fun handleNavigationEffect(
 private fun StickyBottomSection(
     modifier: Modifier = Modifier,
     enabled: Boolean,
-    onClick: () -> Unit,
+    onQrClick: () -> Unit,
+    onNfcClick: () -> Unit,
 ) {
-    Row(modifier = modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // QR Code Scan Button
         WrapStickyBottomContent(
-            stickyBottomModifier = Modifier.fillMaxWidth(),
+            stickyBottomModifier = Modifier.weight(1f),
             stickyBottomConfig = StickyBottomConfig(
                 type = StickyBottomType.OneButton(
                     config = rememberButtonConfig(
                         type = ButtonType.PRIMARY,
                         enabled = enabled,
-                        onClick = onClick,
+                        onClick = onQrClick,
                         content = {
                             Text(text = stringResource(Res.string.home_screen_sticky_bottom_text))
+                        }
+                    )
+                )
+            )
+        )
+
+        // NFC Tap Button
+        WrapStickyBottomContent(
+            stickyBottomModifier = Modifier.weight(1f),
+            stickyBottomConfig = StickyBottomConfig(
+                type = StickyBottomType.OneButton(
+                    config = rememberButtonConfig(
+                        type = ButtonType.SECONDARY,
+                        enabled = enabled,
+                        onClick = onNfcClick,
+                        content = {
+                            Text(text = stringResource(Res.string.home_screen_nfc_button_text))
                         }
                     )
                 )

@@ -34,6 +34,8 @@ interface TransferController {
 
     fun startEngagement(qrCode: String)
 
+    fun startNfcEngagement()
+
     fun sendRequest(
         requestedDocs: List<RequestedDocumentUi>,
         retainData: Boolean,

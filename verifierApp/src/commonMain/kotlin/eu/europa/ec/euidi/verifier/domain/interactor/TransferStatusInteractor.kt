@@ -48,6 +48,8 @@ interface TransferStatusInteractor {
 
     fun startEngagement(qrCode: String)
 
+    fun startNfcEngagement()
+
     suspend fun getConnectionStatus(
         docs: List<RequestedDocumentUi>
     ): Flow<TransferStatus>
@@ -99,6 +101,10 @@ class TransferStatusInteractorImpl(
 
     override fun startEngagement(qrCode: String) {
         transferController.startEngagement(qrCode)
+    }
+
+    override fun startNfcEngagement() {
+        transferController.startNfcEngagement()
     }
 
     override suspend fun getConnectionStatus(

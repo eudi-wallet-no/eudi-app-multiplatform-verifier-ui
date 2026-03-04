@@ -51,6 +51,7 @@
     <!-- Home -->
     <string name="home_screen_title">EUDI Proximity Verifier</string>
     <string name="home_screen_sticky_bottom_text">Scan QR Code</string>
+    <string name="home_screen_nfc_button_text">NFC Tap</string>
     <string name="home_screen_main_button_text_default">Tap to create request</string>
     <string name="home_screen_main_button_text_separator">; </string>
     <string name="home_screen_nfc_title">NFC ready to tap</string>

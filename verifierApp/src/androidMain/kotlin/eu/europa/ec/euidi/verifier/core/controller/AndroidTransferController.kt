@@ -108,7 +108,10 @@ class AndroidTransferController(
         )
 
         transferManager = eudiVerifier.createTransferManager {
+            // QR code engagement with BLE data transfer
             addEngagementMethod(TransferConfig.EngagementMethod.QR, connectionMethods)
+            // NFC reverse engagement (verifier-initiated) with BLE data transfer
+            addEngagementMethod(TransferConfig.EngagementMethod.NFC, connectionMethods)
         }
 
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -116,6 +119,10 @@ class AndroidTransferController(
 
     override fun startEngagement(qrCode: String) {
         transferManager?.startQRDeviceEngagement(qrCode)
+    }
+
+    override fun startNfcEngagement() {
+        transferManager?.startNFCDeviceEngagement()
     }
 
     override fun sendRequest(

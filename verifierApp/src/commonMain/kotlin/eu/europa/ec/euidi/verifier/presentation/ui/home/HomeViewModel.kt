@@ -53,6 +53,7 @@ sealed interface HomeViewModelContract {
         data object DismissError : Event
         data object OnBackClicked : Event
         data object OnStickyButtonClicked : Event
+        data object OnNfcTapClicked : Event
         data object OnMenuClick : Event
         data object OnTapToCreateRequest : Event
     }
@@ -99,6 +100,17 @@ class HomeViewModel(
                 setEffect {
                     Effect.Navigation.SaveDocsToBackstackAndGoTo(
                         screen = NavItem.QrScan,
+                        requestedDocs = RequestedDocsHolder(
+                            items = uiState.value.requestedDocs
+                        )
+                    )
+                }
+            }
+
+            is Event.OnNfcTapClicked -> {
+                setEffect {
+                    Effect.Navigation.SaveDocsToBackstackAndGoTo(
+                        screen = NavItem.TransferStatus(qrCode = "USE_NFC"),
                         requestedDocs = RequestedDocsHolder(
                             items = uiState.value.requestedDocs
                         )
