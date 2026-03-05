@@ -17,15 +17,18 @@
 package eu.europa.ec.euidi.verifier.core.controller
 
 import android.content.Context
+import android.nfc.NfcAdapter
 import android.util.Base64
+import androidx.activity.ComponentActivity
+import com.android.identity.android.mdoc.deviceretrieval.VerificationHelper
+import com.android.identity.android.mdoc.transport.DataTransportOptions
 import eu.europa.ec.eudi.verifier.core.EudiVerifier
 import eu.europa.ec.eudi.verifier.core.EudiVerifierConfig
 import eu.europa.ec.eudi.verifier.core.request.DeviceRequest
 import eu.europa.ec.eudi.verifier.core.request.DocRequest
-import eu.europa.ec.eudi.verifier.core.transfer.TransferConfig
-import eu.europa.ec.eudi.verifier.core.transfer.TransferEvent
-import eu.europa.ec.eudi.verifier.core.transfer.TransferManager
+import eu.europa.ec.eudi.verifier.core.response.DeviceResponse
 import eu.europa.ec.euidi.verifier.core.extension.flattenedClaims
+import eu.europa.ec.euidi.verifier.core.provider.ActivityProvider
 import eu.europa.ec.euidi.verifier.core.provider.ResourceProvider
 import eu.europa.ec.euidi.verifier.domain.config.model.ClaimItem
 import eu.europa.ec.euidi.verifier.domain.config.model.Logger
@@ -47,10 +50,14 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import org.multipaz.mdoc.connectionmethod.MdocConnectionMethod
 import org.multipaz.mdoc.connectionmethod.MdocConnectionMethodBle
+import org.multipaz.mdoc.request.DeviceRequestGenerator
+import org.multipaz.mdoc.response.DeviceResponseParser
+import org.multipaz.mdoc.role.MdocRole
 import org.multipaz.util.UUID
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.util.concurrent.Executor
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -60,9 +67,13 @@ class AndroidTransferController(
     private val resourceProvider: ResourceProvider
 ) : TransferController {
 
-    private var transferManager: TransferManager? = null
     private lateinit var eudiVerifier: EudiVerifier
-    private var listener: TransferEvent.Listener? = null
+    private var verificationHelper: VerificationHelper? = null
+    private var pendingDeviceRequest: DeviceRequest? = null
+    private var readerModeEnabled: Boolean = false
+    private var connectionMethods: List<MdocConnectionMethod> = emptyList()
+    private var dataTransportOptions: DataTransportOptions =
+        DataTransportOptions.Builder().build()
     private var scope: CoroutineScope? = null
 
     private val _statuses = MutableSharedFlow<TransferStatus>(
@@ -107,142 +118,246 @@ class AndroidTransferController(
             )
         )
 
-        transferManager = eudiVerifier.createTransferManager {
-            // QR code engagement with BLE data transfer
-            addEngagementMethod(TransferConfig.EngagementMethod.QR, connectionMethods)
-            // NFC reverse engagement (verifier-initiated) with BLE data transfer
-            addEngagementMethod(TransferConfig.EngagementMethod.NFC, connectionMethods)
-        }
+        this.connectionMethods = connectionMethods
+        dataTransportOptions = DataTransportOptions.Builder()
+            .setBleUseL2CAP(useL2Cap)
+            .setBleClearCache(clearBleCache)
+            .build()
 
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     }
 
     override fun startEngagement(qrCode: String) {
-        transferManager?.startQRDeviceEngagement(qrCode)
+        disableNfcReaderMode()
+        verificationHelper = buildVerificationHelper(enableNfcNegotiatedHandover = false).also { helper ->
+            helper.setDeviceEngagementFromQrCode(qrCode)
+        }
     }
 
     override fun startNfcEngagement() {
-        transferManager?.startNFCDeviceEngagement()
+        val nfcAdapter = NfcAdapter.getDefaultAdapter(context)
+        val activity = ActivityProvider.currentActivity as? ComponentActivity
+
+        when {
+            connectionMethods.isEmpty() -> {
+                _statuses.tryEmit(
+                    TransferStatus.Error(
+                        "TransferManager is not initialized. Call initializeTransferManager() first."
+                    )
+                )
+            }
+
+            nfcAdapter == null -> {
+                _statuses.tryEmit(
+                    TransferStatus.Error("NFC is not available on this device.")
+                )
+            }
+
+            activity == null -> {
+                _statuses.tryEmit(
+                    TransferStatus.Error("Missing foreground activity for NFC engagement.")
+                )
+            }
+
+            else -> {
+                val helper = buildVerificationHelper(enableNfcNegotiatedHandover = true)
+                verificationHelper = helper
+                enableNfcReaderMode(nfcAdapter, activity, helper)
+                _statuses.tryEmit(TransferStatus.Connecting)
+            }
+        }
     }
 
     override fun sendRequest(
         requestedDocs: List<RequestedDocumentUi>,
         retainData: Boolean,
     ): Flow<TransferStatus> {
-        requireNotNull(transferManager) {
-            "TransferManager is not initialized. Call initializeTransferManager() before sendRequest()."
-        }
-
-        val request = requestedDocs
+        pendingDeviceRequest = requestedDocs
             .map { it.transformToDocRequest(retainData) }
             .toDeviceRequest()
-
-        val eventsListener = object : TransferEvent.Listener {
-            override fun onEvent(event: TransferEvent) {
-                with(_statuses) {
-                    when (event) {
-                        is TransferEvent.Connecting -> {
-                            tryEmit(TransferStatus.Connecting)
-                        }
-
-                        is TransferEvent.Connected -> {
-                            transferManager?.sendRequest(request)
-                            tryEmit(TransferStatus.Connected)
-                        }
-
-                        is TransferEvent.DeviceEngagementCompleted -> {
-                            tryEmit(TransferStatus.DeviceEngagementCompleted)
-                        }
-
-                        is TransferEvent.Disconnected -> {
-                            tryEmit(TransferStatus.Disconnected)
-                        }
-
-                        is TransferEvent.Error -> {
-                            tryEmit(
-                                TransferStatus.Error(
-                                    event.error.localizedMessage
-                                        ?: resourceProvider.genericErrorMessage()
-                                )
-                            )
-                        }
-
-                        is TransferEvent.RequestSent -> {
-                            tryEmit(TransferStatus.RequestSent)
-                        }
-
-                        is TransferEvent.ResponseReceived -> {
-
-                            scope?.launch {
-                                try {
-                                    val receivedDocuments = coroutineScope {
-                                        event.response.deviceResponse.documents
-                                            .zip(event.response.documentsClaims)
-                                            .map { (parserDoc, claimsDoc) ->
-                                                async {
-                                                    val trusted = eudiVerifier
-                                                        .isDocumentTrusted(
-                                                            document = parserDoc,
-                                                            atTime = Clock.System.now()
-                                                        ).isTrusted
-
-                                                    val validity = event.response.documentsValidity
-                                                        .find { it.docType == claimsDoc.docType }
-
-                                                    ReceivedDocumentDomain(
-                                                        isTrusted = trusted,
-                                                        docType = claimsDoc.docType,
-                                                        claims = claimsDoc.flattenedClaims(
-                                                            resourceProvider
-                                                        ),
-                                                        validity = DocumentValidityDomain(
-                                                            isDeviceSignatureValid = validity?.isDeviceSignatureValid,
-                                                            isIssuerSignatureValid = validity?.isIssuerSignatureValid,
-                                                            isDataIntegrityIntact = validity?.isDataIntegrityIntact,
-                                                            signed = validity?.msoValidity?.signed,
-                                                            validFrom = validity?.msoValidity?.validFrom,
-                                                            validUntil = validity?.msoValidity?.validUntil,
-                                                        )
-                                                    )
-                                                }
-                                            }
-                                            .awaitAll()
-                                    }
-
-                                    tryEmit(
-                                        TransferStatus.OnResponseReceived(
-                                            receivedDocs = ReceivedDocumentsDomain(documents = receivedDocuments)
-                                        )
-                                    )
-
-                                } catch (t: Throwable) {
-                                    tryEmit(
-                                        TransferStatus.Error(
-                                            t.localizedMessage
-                                                ?: resourceProvider.genericErrorMessage()
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        listener?.let { transferManager?.removeListener(it) }
-        listener = eventsListener
-        transferManager?.addListener(eventsListener)
         return statuses
     }
 
     override fun stopConnection() {
-        listener?.let { transferManager?.removeListener(it) }
-        listener = null
-        transferManager?.stopSession()
-        transferManager = null
+        disableNfcReaderMode()
+        verificationHelper?.disconnect()
+        verificationHelper = null
+        pendingDeviceRequest = null
         scope?.cancel()
         scope = null
+    }
+
+    private fun buildVerificationHelper(enableNfcNegotiatedHandover: Boolean): VerificationHelper {
+        val listener = object : VerificationHelper.Listener {
+            override fun onReaderEngagementReady(readerEngagement: ByteArray) = Unit
+
+            override fun onDeviceEngagementReceived(connectionMethods: List<MdocConnectionMethod>) {
+                val selectedMethod = MdocConnectionMethod.disambiguate(
+                    connectionMethods,
+                    MdocRole.MDOC_READER
+                ).firstOrNull()
+
+                if (selectedMethod == null) {
+                    _statuses.tryEmit(
+                        TransferStatus.Error("No mdoc connection method selected.")
+                    )
+                    return
+                }
+
+                _statuses.tryEmit(TransferStatus.DeviceEngagementCompleted)
+                verificationHelper?.connect(selectedMethod)
+            }
+
+            override fun onMoveIntoNfcField() {
+                _statuses.tryEmit(TransferStatus.Connecting)
+            }
+
+            override fun onDeviceConnected() {
+                _statuses.tryEmit(TransferStatus.Connected)
+                sendPendingRequest()
+            }
+
+            override fun onDeviceDisconnected(transportSpecificTermination: Boolean) {
+                _statuses.tryEmit(TransferStatus.Disconnected)
+            }
+
+            override fun onResponseReceived(deviceResponseBytes: ByteArray) {
+                handleDeviceResponse(deviceResponseBytes)
+            }
+
+            override fun onError(error: Throwable) {
+                _statuses.tryEmit(
+                    TransferStatus.Error(
+                        error.localizedMessage ?: resourceProvider.genericErrorMessage()
+                    )
+                )
+            }
+        }
+
+        val builder = VerificationHelper.Builder(
+            context,
+            listener,
+            context.mainExecutor()
+        ).setDataTransportOptions(dataTransportOptions)
+
+        if (enableNfcNegotiatedHandover) {
+            builder.setNegotiatedHandoverConnectionMethods(connectionMethods)
+        }
+
+        return builder.build()
+    }
+
+    private fun sendPendingRequest() {
+        val helper = verificationHelper ?: return
+        val safeRequest = pendingDeviceRequest ?: return
+
+        val deviceRequestBytes = DeviceRequestGenerator(helper.sessionTranscript).apply {
+            safeRequest.docRequests.forEach { doc ->
+                addDocumentRequest(
+                    docType = doc.docType,
+                    itemsToRequest = doc.itemsRequest,
+                    readerKeyCertificateChain = null,
+                    requestInfo = null,
+                    readerKey = null,
+                    signatureAlgorithm = org.multipaz.crypto.Algorithm.UNSET
+                )
+            }
+        }.generate()
+
+        helper.sendRequest(deviceRequestBytes)
+        _statuses.tryEmit(TransferStatus.RequestSent)
+    }
+
+    private fun handleDeviceResponse(deviceResponseBytes: ByteArray) {
+        scope?.launch {
+            try {
+                val helper = verificationHelper
+                    ?: error("No active verification helper.")
+
+                val parser = DeviceResponseParser(
+                    deviceResponseBytes,
+                    helper.sessionTranscript
+                ).apply {
+                    setEphemeralReaderKey(helper.eReaderKey)
+                }
+
+                val response = DeviceResponse(
+                    parser.parse(),
+                    deviceResponseBytes
+                )
+
+                val receivedDocuments = coroutineScope {
+                    response.deviceResponse.documents
+                        .zip(response.documentsClaims)
+                        .map { (parserDoc, claimsDoc) ->
+                            async {
+                                val trusted = eudiVerifier
+                                    .isDocumentTrusted(
+                                        document = parserDoc,
+                                        atTime = Clock.System.now()
+                                    ).isTrusted
+
+                                val validity = response.documentsValidity
+                                    .find { it.docType == claimsDoc.docType }
+
+                                ReceivedDocumentDomain(
+                                    isTrusted = trusted,
+                                    docType = claimsDoc.docType,
+                                    claims = claimsDoc.flattenedClaims(resourceProvider),
+                                    validity = DocumentValidityDomain(
+                                        isDeviceSignatureValid = validity?.isDeviceSignatureValid,
+                                        isIssuerSignatureValid = validity?.isIssuerSignatureValid,
+                                        isDataIntegrityIntact = validity?.isDataIntegrityIntact,
+                                        signed = validity?.msoValidity?.signed,
+                                        validFrom = validity?.msoValidity?.validFrom,
+                                        validUntil = validity?.msoValidity?.validUntil,
+                                    )
+                                )
+                            }
+                        }
+                        .awaitAll()
+                }
+
+                _statuses.tryEmit(
+                    TransferStatus.OnResponseReceived(
+                        receivedDocs = ReceivedDocumentsDomain(documents = receivedDocuments)
+                    )
+                )
+            } catch (t: Throwable) {
+                _statuses.tryEmit(
+                    TransferStatus.Error(
+                        t.localizedMessage ?: resourceProvider.genericErrorMessage()
+                    )
+                )
+            }
+        }
+    }
+
+    private fun enableNfcReaderMode(
+        nfcAdapter: NfcAdapter,
+        activity: ComponentActivity,
+        helper: VerificationHelper
+    ) {
+        val flags = NfcAdapter.FLAG_READER_NFC_A or
+            NfcAdapter.FLAG_READER_NFC_B or
+            NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or
+            NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS
+
+        nfcAdapter.enableReaderMode(
+            activity,
+            { tag -> helper.nfcProcessOnTagDiscovered(tag) },
+            flags,
+            null
+        )
+        readerModeEnabled = true
+    }
+
+    private fun disableNfcReaderMode() {
+        val activity = ActivityProvider.currentActivity as? ComponentActivity
+        if (readerModeEnabled && activity != null) {
+            NfcAdapter.getDefaultAdapter(context)?.disableReaderMode(activity)
+        }
+        readerModeEnabled = false
     }
 
     private fun pemToX509Certificate(pem: String): Result<X509Certificate> {
@@ -281,4 +396,12 @@ class AndroidTransferController(
         DeviceRequest(
             docRequests = this
         )
+
+    private fun Context.mainExecutor(): Executor {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            mainExecutor
+        } else {
+            androidx.core.content.ContextCompat.getMainExecutor(this)
+        }
+    }
 }
