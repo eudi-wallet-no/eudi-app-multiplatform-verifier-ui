@@ -141,17 +141,14 @@ class HomeViewModel(
 
     private fun initiate(docs: List<RequestedDocumentUi>?) {
         viewModelScope.launch {
-
-            uiState.value.mainButtonData ?: run {
-                val title = interactor.getScreenTitle()
-                val buttonData = interactor.getDefaultMainButtonData()
-                setState {
-                    copy(
-                        screenTitle = title,
-                        mainButtonData = buttonData,
-                        isLoading = false
-                    )
-                }
+            val title = interactor.getScreenTitle()
+            val buttonData = interactor.getDefaultMainButtonData()
+            setState {
+                copy(
+                    screenTitle = title,
+                    mainButtonData = buttonData,
+                    isLoading = false
+                )
             }
 
             handleDocs(docs = docs)
