@@ -94,7 +94,7 @@
     <string name="custom_request_screen_select_deselect">Select/Deselect all</string>
 
     <!-- Show Documents -->
-    <string name="show_documents_screen_title">Show Documents</string>
+    <string name="show_documents_screen_title">Aldersverifisering</string>
     <string name="show_documents_screen_num_of_docs_description">Number of documents returned</string>
     <string name="show_documents_screen_address_description">Address</string>
     <string name="show_documents_screen_document_header">Doctype</string>
