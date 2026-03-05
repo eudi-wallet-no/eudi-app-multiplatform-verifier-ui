@@ -95,7 +95,8 @@ fun ShowDocumentsScreen(
     ContentScreen(
         navigatableAction = ScreenNavigateAction.BACKABLE,
         toolBarConfig = ToolbarConfig(
-            title = stringResource(Res.string.show_documents_screen_title)
+            title = stringResource(Res.string.show_documents_screen_title),
+            backgroundColor = Color(0xFF3C853C)
         ),
         onBack = {
             viewModel.setEvent(ShowDocumentViewModelContract.Event.OnBackClick)
@@ -205,13 +206,23 @@ private fun ContentSuccess(
         Spacer(modifier = Modifier.height(50.dp))
 
         var imageValue = ""
-        state.items.forEach { document ->
+        var over16value = false
+        var over18value = false
 
+        var claimsApproved: List<String> = emptyList()
+
+        state.items.forEach { document ->
 
             document.uiClaims.forEach { claim ->
                 if (claim.overlineText == "Bilde") {
                     val data = claim.leadingContentData as ListItemLeadingContentDataUi.UserImage
                     imageValue = data.userBase64Image
+                } else if (claim.overlineText == "Over 16") {
+                    over16value = true
+                    claimsApproved = claimsApproved.plus("Over 16")
+                }else if (claim.overlineText == "Over 18") {
+                    over18value = true
+                    claimsApproved = claimsApproved.plus("Over 18")
                 }
             }
         }
@@ -229,6 +240,38 @@ private fun ContentSuccess(
         )
 
         Spacer(modifier = Modifier.height(30.dp))
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (over16value) {
+                Text(
+                    "Age 16+",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            if (over18value) {
+                Text(
+                    "Age 18+",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        /*claimsApproved.forEach { claimItemTxt ->
+
+        }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -253,6 +296,8 @@ private fun ContentSuccess(
                 modifier = Modifier.size(40.dp)
             )
         }
+
+         */
     }
 
     LaunchedEffect(Unit) {

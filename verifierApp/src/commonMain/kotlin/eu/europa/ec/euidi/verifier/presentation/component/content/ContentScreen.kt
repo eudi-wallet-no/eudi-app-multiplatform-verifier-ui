@@ -34,6 +34,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarColors
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,6 +77,7 @@ data class ToolbarActionUi(
 
 data class ToolbarConfig(
     val title: String = "",
+    val backgroundColor: Color = Color.White,
     val actions: List<ToolbarActionUi> = listOf()
 )
 
@@ -264,7 +267,13 @@ private fun DefaultToolBar(
         // Add toolbar actions.
         actions = {
             ToolBarActions(toolBarActions = toolbarConfig?.actions)
-        }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+            titleContentColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+            navigationIconContentColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+            actionIconContentColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+        )
     )
 }
 
