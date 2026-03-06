@@ -18,6 +18,8 @@ package eu.europa.ec.euidi.verifier.core.controller
 
 import android.content.Context
 import android.nfc.NfcAdapter
+import android.nfc.Tag
+import android.nfc.tech.IsoDep
 import android.util.Base64
 import androidx.activity.ComponentActivity
 import com.android.identity.android.mdoc.deviceretrieval.VerificationHelper
@@ -43,6 +45,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -109,7 +112,7 @@ class AndroidTransferController(
         useL2Cap: Boolean,
         clearBleCache: Boolean
     ) {
-        val connectionMethods = listOf<MdocConnectionMethod>(
+        val configuredConnectionMethods = listOf<MdocConnectionMethod>(
             MdocConnectionMethodBle(
                 supportsPeripheralServerMode = blePeripheralServerMode,
                 supportsCentralClientMode = bleCentralClientMode,
@@ -118,7 +121,11 @@ class AndroidTransferController(
             )
         )
 
-        this.connectionMethods = connectionMethods
+        this.connectionMethods = MdocConnectionMethod.disambiguate(
+            configuredConnectionMethods,
+            MdocRole.MDOC_READER
+        ).ifEmpty { configuredConnectionMethods }
+
         dataTransportOptions = DataTransportOptions.Builder()
             .setBleUseL2CAP(useL2Cap)
             .setBleClearCache(clearBleCache)
@@ -160,10 +167,18 @@ class AndroidTransferController(
             }
 
             else -> {
-                val helper = buildVerificationHelper(enableNfcNegotiatedHandover = true)
-                verificationHelper = helper
-                enableNfcReaderMode(nfcAdapter, activity, helper)
-                _statuses.tryEmit(TransferStatus.Connecting)
+                runCatching {
+                    val helper = buildVerificationHelper(enableNfcNegotiatedHandover = true)
+                    verificationHelper = helper
+                    enableNfcReaderMode(nfcAdapter, activity, helper)
+                    _statuses.tryEmit(TransferStatus.Connecting)
+                }.onFailure { error ->
+                    _statuses.tryEmit(
+                        TransferStatus.Error(
+                            error.localizedMessage ?: resourceProvider.genericErrorMessage()
+                        )
+                    )
+                }
             }
         }
     }
@@ -205,7 +220,15 @@ class AndroidTransferController(
                 }
 
                 _statuses.tryEmit(TransferStatus.DeviceEngagementCompleted)
-                verificationHelper?.connect(selectedMethod)
+                runCatching {
+                    verificationHelper?.connect(selectedMethod)
+                }.onFailure { error ->
+                    _statuses.tryEmit(
+                        TransferStatus.Error(
+                            error.localizedMessage ?: resourceProvider.genericErrorMessage()
+                        )
+                    )
+                }
             }
 
             override fun onMoveIntoNfcField() {
@@ -214,7 +237,21 @@ class AndroidTransferController(
 
             override fun onDeviceConnected() {
                 _statuses.tryEmit(TransferStatus.Connected)
-                sendPendingRequest()
+                scope?.launch {
+                    runCatching {
+                        sendPendingRequestWithRetry()
+                    }.onFailure { error ->
+                        _statuses.tryEmit(
+                            TransferStatus.Error(
+                                error.localizedMessage ?: resourceProvider.genericErrorMessage()
+                            )
+                        )
+                    }
+                } ?: run {
+                    _statuses.tryEmit(
+                        TransferStatus.Error("Internal scope not available for request dispatch.")
+                    )
+                }
             }
 
             override fun onDeviceDisconnected(transportSpecificTermination: Boolean) {
@@ -226,6 +263,12 @@ class AndroidTransferController(
             }
 
             override fun onError(error: Throwable) {
+                if (error.isRecoverableNfcTagError()) {
+                    // Keep reader mode alive and wait for the next valid proximity event.
+                    _statuses.tryEmit(TransferStatus.Connecting)
+                    return
+                }
+
                 _statuses.tryEmit(
                     TransferStatus.Error(
                         error.localizedMessage ?: resourceProvider.genericErrorMessage()
@@ -266,6 +309,23 @@ class AndroidTransferController(
 
         helper.sendRequest(deviceRequestBytes)
         _statuses.tryEmit(TransferStatus.RequestSent)
+    }
+
+    private suspend fun sendPendingRequestWithRetry(maxAttempts: Int = 2) {
+        var lastError: Throwable? = null
+        repeat(maxAttempts) { attempt ->
+            runCatching {
+                sendPendingRequest()
+                return
+            }.onFailure { error ->
+                lastError = error
+                if (attempt < maxAttempts - 1) {
+                    // Some devices are timing-sensitive right after NFC/BLE connect.
+                    delay(300)
+                }
+            }
+        }
+        throw lastError ?: IllegalStateException("Failed to send device request.")
     }
 
     private fun handleDeviceResponse(deviceResponseBytes: ByteArray) {
@@ -345,7 +405,28 @@ class AndroidTransferController(
 
         nfcAdapter.enableReaderMode(
             activity,
-            { tag -> helper.nfcProcessOnTagDiscovered(tag) },
+            { tag ->
+                // ISO 18013-5 NFC handover requires Reader/Writer mode with Type 4 Tag (IsoDep).
+                if (!tag.supportsIsoDep()) {
+                    _statuses.tryEmit(TransferStatus.Connecting)
+                    return@enableReaderMode
+                }
+
+                runCatching {
+                    helper.nfcProcessOnTagDiscovered(tag)
+                }.onFailure { error ->
+                    if (error.isRecoverableNfcTagError()) {
+                        _statuses.tryEmit(TransferStatus.Connecting)
+                        return@enableReaderMode
+                    }
+
+                    _statuses.tryEmit(
+                        TransferStatus.Error(
+                            error.localizedMessage ?: resourceProvider.genericErrorMessage()
+                        )
+                    )
+                }
+            },
             flags,
             null
         )
@@ -403,5 +484,17 @@ class AndroidTransferController(
         } else {
             androidx.core.content.ContextCompat.getMainExecutor(this)
         }
+    }
+
+    private fun Throwable.isRecoverableNfcTagError(): Boolean {
+        val message = localizedMessage?.lowercase().orEmpty()
+        return message.contains("unknown tag type") ||
+            message.contains("empty tag") ||
+            message.contains("tom tag") ||
+            message.contains("tag lost")
+    }
+
+    private fun Tag.supportsIsoDep(): Boolean {
+        return techList.contains(IsoDep::class.java.name)
     }
 }

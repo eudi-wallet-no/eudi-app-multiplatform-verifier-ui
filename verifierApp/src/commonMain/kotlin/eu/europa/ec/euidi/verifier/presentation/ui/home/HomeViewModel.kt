@@ -53,7 +53,6 @@ sealed interface HomeViewModelContract {
         data object DismissError : Event
         data object OnBackClicked : Event
         data object OnStickyButtonClicked : Event
-        data object OnNfcTapClicked : Event
         data object OnMenuClick : Event
         data object OnTapToCreateRequest : Event
     }
@@ -107,17 +106,6 @@ class HomeViewModel(
                 }
             }
 
-            is Event.OnNfcTapClicked -> {
-                setEffect {
-                    Effect.Navigation.SaveDocsToBackstackAndGoTo(
-                        screen = NavItem.TransferStatus(qrCode = "USE_NFC"),
-                        requestedDocs = RequestedDocsHolder(
-                            items = uiState.value.requestedDocs
-                        )
-                    )
-                }
-            }
-
             is Event.OnMenuClick -> {
                 setEffect {
                     Effect.Navigation.PushScreen(
@@ -141,14 +129,17 @@ class HomeViewModel(
 
     private fun initiate(docs: List<RequestedDocumentUi>?) {
         viewModelScope.launch {
-            val title = interactor.getScreenTitle()
-            val buttonData = interactor.getDefaultMainButtonData()
-            setState {
-                copy(
-                    screenTitle = title,
-                    mainButtonData = buttonData,
-                    isLoading = false
-                )
+
+            uiState.value.mainButtonData ?: run {
+                val title = interactor.getScreenTitle()
+                val buttonData = interactor.getDefaultMainButtonData()
+                setState {
+                    copy(
+                        screenTitle = title,
+                        mainButtonData = buttonData,
+                        isLoading = false
+                    )
+                }
             }
 
             handleDocs(docs = docs)
