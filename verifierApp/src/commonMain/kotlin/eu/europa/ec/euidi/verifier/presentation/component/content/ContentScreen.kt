@@ -17,6 +17,7 @@
 
 package eu.europa.ec.euidi.verifier.presentation.component.content
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -78,6 +79,7 @@ data class ToolbarActionUi(
 data class ToolbarConfig(
     val title: String = "",
     val backgroundColor: Color = Color.White,
+    val textColor: Color = Color.Black,
     val actions: List<ToolbarActionUi> = listOf()
 )
 
@@ -92,6 +94,7 @@ enum class ImePaddingConfig {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ContentScreen(
+    backgroundColor: Color? = null,
     modifier: Modifier = Modifier.fillMaxSize(),
     isLoading: Boolean = false,
     toolBarConfig: ToolbarConfig? = null,
@@ -201,8 +204,10 @@ fun ContentScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .navigationBarsPadding()
-                                .zIndex(Z_STICKY),
+                                .zIndex(Z_STICKY)
+                                .background(backgroundColor ?: Color.White),
                             contentAlignment = Alignment.Center
+
                         ) {
                             stickyBottomContent(
                                 stickyBottomPaddings(
@@ -239,7 +244,7 @@ private fun DefaultToolBar(
         title = {
             Text(
                 text = toolbarConfig?.title.orEmpty(),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = toolbarConfig?.textColor ?: MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -256,6 +261,7 @@ private fun DefaultToolBar(
                 ToolbarIcon(
                     toolbarAction = ToolbarActionUi(
                         icon = navigationIcon,
+                        customTint = toolbarConfig?.textColor,
                         onClick = {
                             onBack?.invoke()
                             keyboardController?.hide()
