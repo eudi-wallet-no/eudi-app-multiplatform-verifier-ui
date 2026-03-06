@@ -51,16 +51,33 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.multipaz.cbor.Bstr
+import org.multipaz.cbor.Cbor
+import org.multipaz.cbor.Tagged
+import org.multipaz.cbor.buildCborArray
+import org.multipaz.crypto.Crypto
+import org.multipaz.crypto.EcPrivateKey
 import org.multipaz.mdoc.connectionmethod.MdocConnectionMethod
 import org.multipaz.mdoc.connectionmethod.MdocConnectionMethodBle
+import org.multipaz.mdoc.engagement.EngagementParser
+import org.multipaz.mdoc.nfc.mdocReaderNfcHandover
 import org.multipaz.mdoc.request.DeviceRequestGenerator
-import org.multipaz.mdoc.response.DeviceResponseParser
 import org.multipaz.mdoc.role.MdocRole
+import org.multipaz.mdoc.response.DeviceResponseParser
+import org.multipaz.mdoc.sessionencryption.SessionEncryption
+import org.multipaz.mdoc.transport.MdocTransport
+import org.multipaz.mdoc.transport.MdocTransportFactory
+import org.multipaz.mdoc.transport.MdocTransportOptions
+import org.multipaz.mdoc.transport.NfcTransportMdocReader
+import org.multipaz.nfc.NfcIsoTagAndroid
+import org.multipaz.util.Constants
 import org.multipaz.util.UUID
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -77,7 +94,10 @@ class AndroidTransferController(
     private var connectionMethods: List<MdocConnectionMethod> = emptyList()
     private var dataTransportOptions: DataTransportOptions =
         DataTransportOptions.Builder().build()
+    private var bleUseL2Cap: Boolean = false
     private var scope: CoroutineScope? = null
+    private var nfcSession: NfcSession? = null
+    private val nfcTagProcessing = AtomicBoolean(false)
 
     private val _statuses = MutableSharedFlow<TransferStatus>(
         replay = 1,
@@ -121,21 +141,30 @@ class AndroidTransferController(
             )
         )
 
-        this.connectionMethods = MdocConnectionMethod.disambiguate(
+        val disambiguatedConnectionMethods = MdocConnectionMethod.disambiguate(
             configuredConnectionMethods,
             MdocRole.MDOC_READER
         ).ifEmpty { configuredConnectionMethods }
+
+        // NFC negotiated handover interoperability is better when the reader offers one
+        // unambiguous BLE method.
+        this.connectionMethods = listOf(
+            disambiguatedConnectionMethods.preferredReaderBleMethod()
+                ?: disambiguatedConnectionMethods.first()
+        )
 
         dataTransportOptions = DataTransportOptions.Builder()
             .setBleUseL2CAP(useL2Cap)
             .setBleClearCache(clearBleCache)
             .build()
+        bleUseL2Cap = useL2Cap
 
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     }
 
     override fun startEngagement(qrCode: String) {
         disableNfcReaderMode()
+        closeNfcSessionAsync()
         verificationHelper = buildVerificationHelper(enableNfcNegotiatedHandover = false).also { helper ->
             helper.setDeviceEngagementFromQrCode(qrCode)
         }
@@ -168,9 +197,10 @@ class AndroidTransferController(
 
             else -> {
                 runCatching {
-                    val helper = buildVerificationHelper(enableNfcNegotiatedHandover = true)
-                    verificationHelper = helper
-                    enableNfcReaderMode(nfcAdapter, activity, helper)
+                    verificationHelper?.disconnect()
+                    verificationHelper = null
+                    closeNfcSessionAsync()
+                    enableNfcReaderMode(nfcAdapter, activity)
                     _statuses.tryEmit(TransferStatus.Connecting)
                 }.onFailure { error ->
                     _statuses.tryEmit(
@@ -197,6 +227,7 @@ class AndroidTransferController(
         disableNfcReaderMode()
         verificationHelper?.disconnect()
         verificationHelper = null
+        closeNfcSessionAsync()
         pendingDeviceRequest = null
         scope?.cancel()
         scope = null
@@ -290,10 +321,56 @@ class AndroidTransferController(
         return builder.build()
     }
 
-    private fun sendPendingRequest() {
-        val helper = verificationHelper ?: return
+    private suspend fun sendPendingRequest() {
         val safeRequest = pendingDeviceRequest ?: return
 
+        val nfcActiveSession = nfcSession
+        if (nfcActiveSession != null) {
+            val deviceRequestBytes = DeviceRequestGenerator(nfcActiveSession.sessionTranscript).apply {
+                safeRequest.docRequests.forEach { doc ->
+                    addDocumentRequest(
+                        docType = doc.docType,
+                        itemsToRequest = doc.itemsRequest,
+                        readerKeyCertificateChain = null,
+                        requestInfo = null,
+                        readerKey = null,
+                        signatureAlgorithm = org.multipaz.crypto.Algorithm.UNSET
+                    )
+                }
+            }.generate()
+
+            nfcActiveSession.transport.sendMessage(
+                nfcActiveSession.sessionEncryption.encryptMessage(
+                    messagePlaintext = deviceRequestBytes,
+                    statusCode = null
+                )
+            )
+            _statuses.tryEmit(TransferStatus.RequestSent)
+
+            val encryptedResponse = nfcActiveSession.transport.waitForMessage()
+            if (encryptedResponse.isEmpty()) {
+                _statuses.tryEmit(TransferStatus.Disconnected)
+                return
+            }
+
+            val (deviceResponseBytes, statusCode) = nfcActiveSession.sessionEncryption.decryptMessage(
+                encryptedResponse
+            )
+            if (deviceResponseBytes != null) {
+                handleDeviceResponse(
+                    deviceResponseBytes = deviceResponseBytes,
+                    sessionTranscript = nfcActiveSession.sessionTranscript,
+                    eReaderKey = nfcActiveSession.eReaderKey
+                )
+            }
+
+            if (statusCode == Constants.SESSION_DATA_STATUS_SESSION_TERMINATION) {
+                _statuses.tryEmit(TransferStatus.Disconnected)
+            }
+            return
+        }
+
+        val helper = verificationHelper ?: return
         val deviceRequestBytes = DeviceRequestGenerator(helper.sessionTranscript).apply {
             safeRequest.docRequests.forEach { doc ->
                 addDocumentRequest(
@@ -328,17 +405,22 @@ class AndroidTransferController(
         throw lastError ?: IllegalStateException("Failed to send device request.")
     }
 
-    private fun handleDeviceResponse(deviceResponseBytes: ByteArray) {
+    private fun handleDeviceResponse(
+        deviceResponseBytes: ByteArray,
+        sessionTranscript: ByteArray? = null,
+        eReaderKey: EcPrivateKey? = null
+    ) {
         scope?.launch {
             try {
-                val helper = verificationHelper
-                    ?: error("No active verification helper.")
-
+                val transcript = sessionTranscript ?: verificationHelper?.sessionTranscript
+                    ?: error("No active session transcript.")
                 val parser = DeviceResponseParser(
                     deviceResponseBytes,
-                    helper.sessionTranscript
-                ).apply {
-                    setEphemeralReaderKey(helper.eReaderKey)
+                    transcript
+                )
+                val ephemeralReaderKey = eReaderKey ?: verificationHelper?.eReaderKey
+                if (ephemeralReaderKey != null) {
+                    parser.setEphemeralReaderKey(ephemeralReaderKey)
                 }
 
                 val response = DeviceResponse(
@@ -393,11 +475,7 @@ class AndroidTransferController(
         }
     }
 
-    private fun enableNfcReaderMode(
-        nfcAdapter: NfcAdapter,
-        activity: ComponentActivity,
-        helper: VerificationHelper
-    ) {
+    private fun enableNfcReaderMode(nfcAdapter: NfcAdapter, activity: ComponentActivity) {
         val flags = NfcAdapter.FLAG_READER_NFC_A or
             NfcAdapter.FLAG_READER_NFC_B or
             NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or
@@ -412,20 +490,7 @@ class AndroidTransferController(
                     return@enableReaderMode
                 }
 
-                runCatching {
-                    helper.nfcProcessOnTagDiscovered(tag)
-                }.onFailure { error ->
-                    if (error.isRecoverableNfcTagError()) {
-                        _statuses.tryEmit(TransferStatus.Connecting)
-                        return@enableReaderMode
-                    }
-
-                    _statuses.tryEmit(
-                        TransferStatus.Error(
-                            error.localizedMessage ?: resourceProvider.genericErrorMessage()
-                        )
-                    )
-                }
+                handleNfcTagDiscovered(tag)
             },
             flags,
             null
@@ -486,6 +551,136 @@ class AndroidTransferController(
         }
     }
 
+    private fun handleNfcTagDiscovered(tag: Tag) {
+        if (!nfcTagProcessing.compareAndSet(false, true)) {
+            return
+        }
+
+        val localScope = scope
+        if (localScope == null) {
+            nfcTagProcessing.set(false)
+            _statuses.tryEmit(TransferStatus.Error("Internal scope not available for NFC handover."))
+            return
+        }
+
+        localScope.launch {
+            try {
+                performNfcNegotiatedHandover(tag)
+            } catch (error: Throwable) {
+                if (error.isRecoverableNfcTagError()) {
+                    _statuses.tryEmit(TransferStatus.Connecting)
+                } else {
+                    _statuses.tryEmit(
+                        TransferStatus.Error(
+                            error.localizedMessage ?: resourceProvider.genericErrorMessage()
+                        )
+                    )
+                }
+            } finally {
+                nfcTagProcessing.set(false)
+            }
+        }
+    }
+
+    private suspend fun performNfcNegotiatedHandover(tag: Tag) {
+        val isoDep = IsoDep.get(tag) ?: error("IsoDep tag not available.")
+        withContext(Dispatchers.IO) {
+            isoDep.connect()
+            isoDep.timeout = 20_000
+        }
+
+        val isoTag = NfcIsoTagAndroid(
+            tag = isoDep,
+            tagContext = Dispatchers.IO
+        )
+
+        val handoverResult = mdocReaderNfcHandover(
+            tag = isoTag,
+            negotiatedHandoverConnectionMethods = connectionMethods
+        )
+
+        if (handoverResult == null) {
+            _statuses.tryEmit(TransferStatus.Connecting)
+            return
+        }
+
+        val selectedMethod = handoverResult.connectionMethods
+            .preferredReaderBleMethod()
+            ?: handoverResult.connectionMethods.firstOrNull()
+            ?: error("No mdoc connection method selected.")
+
+        val transport = MdocTransportFactory.Default.createTransport(
+            connectionMethod = selectedMethod,
+            role = MdocRole.MDOC_READER,
+            options = MdocTransportOptions(
+                bleUseL2CAP = bleUseL2Cap
+            )
+        )
+
+        if (transport is NfcTransportMdocReader) {
+            transport.setTag(isoTag)
+        }
+
+        val engagement = EngagementParser(
+            handoverResult.encodedDeviceEngagement.toByteArray()
+        ).parse()
+        val eDeviceKey = engagement.eSenderKey
+        val eReaderKey = Crypto.createEcPrivateKey(eDeviceKey.curve)
+        val encodedSessionTranscript = generateEncodedSessionTranscript(
+            encodedDeviceEngagement = handoverResult.encodedDeviceEngagement.toByteArray(),
+            handover = handoverResult.handover,
+            eReaderKey = eReaderKey
+        )
+
+        val sessionEncryption = SessionEncryption(
+            role = MdocRole.MDOC_READER,
+            eSelfKey = eReaderKey,
+            remotePublicKey = eDeviceKey,
+            encodedSessionTranscript = encodedSessionTranscript
+        )
+
+        transport.open(eDeviceKey)
+        closeNfcSession()
+        nfcSession = NfcSession(
+            transport = transport,
+            sessionEncryption = sessionEncryption,
+            sessionTranscript = encodedSessionTranscript,
+            eReaderKey = eReaderKey
+        )
+
+        _statuses.tryEmit(TransferStatus.DeviceEngagementCompleted)
+        _statuses.tryEmit(TransferStatus.Connected)
+        sendPendingRequestWithRetry()
+    }
+
+    private fun generateEncodedSessionTranscript(
+        encodedDeviceEngagement: ByteArray,
+        handover: org.multipaz.cbor.DataItem,
+        eReaderKey: EcPrivateKey
+    ): ByteArray {
+        val encodedEReaderKey = Cbor.encode(eReaderKey.publicKey.toCoseKey().toDataItem())
+        return Cbor.encode(
+            buildCborArray {
+                add(Tagged(24, Bstr(encodedDeviceEngagement)))
+                add(Tagged(24, Bstr(encodedEReaderKey)))
+                add(handover)
+            }
+        )
+    }
+
+    private suspend fun closeNfcSession() {
+        nfcSession?.transport?.close()
+        nfcSession = null
+    }
+
+    private fun closeNfcSessionAsync() {
+        scope?.launch {
+            closeNfcSession()
+        } ?: run {
+            nfcSession = null
+        }
+    }
+
     private fun Throwable.isRecoverableNfcTagError(): Boolean {
         val message = localizedMessage?.lowercase().orEmpty()
         return message.contains("unknown tag type") ||
@@ -497,4 +692,19 @@ class AndroidTransferController(
     private fun Tag.supportsIsoDep(): Boolean {
         return techList.contains(IsoDep::class.java.name)
     }
+
+    private fun List<MdocConnectionMethod>.preferredReaderBleMethod(): MdocConnectionMethod? {
+        return firstOrNull { method ->
+            method is MdocConnectionMethodBle &&
+                method.supportsCentralClientMode &&
+                !method.supportsPeripheralServerMode
+        }
+    }
+
+    private data class NfcSession(
+        val transport: MdocTransport,
+        val sessionEncryption: SessionEncryption,
+        val sessionTranscript: ByteArray,
+        val eReaderKey: EcPrivateKey
+    )
 }
