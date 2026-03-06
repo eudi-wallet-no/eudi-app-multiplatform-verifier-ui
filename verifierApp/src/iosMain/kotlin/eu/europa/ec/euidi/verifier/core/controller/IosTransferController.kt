@@ -35,6 +35,8 @@ class IosTransferController : TransferController {
 
     override fun startEngagement(qrCode: String) {}
 
+    override fun startNfcEngagement() {}
+
     override fun sendRequest(
         requestedDocs: List<RequestedDocumentUi>,
         retainData: Boolean
