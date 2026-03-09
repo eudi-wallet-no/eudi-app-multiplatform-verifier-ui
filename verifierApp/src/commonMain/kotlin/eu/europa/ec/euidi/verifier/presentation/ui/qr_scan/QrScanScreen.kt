@@ -56,6 +56,7 @@ import eu.europa.ec.euidi.verifier.presentation.ui.qr_scan.QrScanViewModelContra
 import eu.europa.ec.euidi.verifier.presentation.utils.Constants
 import eudiverifier.verifierapp.generated.resources.Res
 import eudiverifier.verifierapp.generated.resources.content_description_check_icon
+import eudiverifier.verifierapp.generated.resources.ic_qr_code_hand
 import eudiverifier.verifierapp.generated.resources.ic_qr_code_scan
 import kotlinx.coroutines.flow.Flow
 import org.jetbrains.compose.resources.painterResource
@@ -172,9 +173,9 @@ private fun Content(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "Scan QR-koden frå lommeboka di",
+                        "Vis QR-koden frå lommeboka di",
                         style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.W700
                         ),
                         color = Color.Black,
                         textAlign = TextAlign.Center,
@@ -183,7 +184,7 @@ private fun Content(
                     Spacer(modifier = Modifier.width(15.dp))
 
                     Icon(
-                        painter = painterResource(Res.drawable.ic_qr_code_scan),
+                        painter = painterResource(Res.drawable.ic_qr_code_hand),
                         contentDescription = stringResource(Res.string.content_description_check_icon),
                         tint = Color.Black,
                         modifier = Modifier.size(250.dp)
