@@ -267,14 +267,14 @@ private fun ContentSuccess(
             if (over18exist) {
                 if (over18value) {
                     TextSection(
-                        text = "$over18Text+",
+                        text = "$over18Text år",
                         textColor = Color.White,
                         icon = Res.drawable.ic_check_mark,
                         iconSize = Modifier.size(40.dp)
                     )
                 }else {
                     TextSection(
-                        text = "$over18Text+",
+                        text = "$over18Text år",
                         textColor = Color(0xFFC94F4F),
                         icon = Res.drawable.ic_error_icon,
                         iconSize = Modifier.size(35.dp)
