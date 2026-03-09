@@ -17,7 +17,9 @@
 package eu.europa.ec.euidi.verifier.presentation.ui.show_document
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,10 +39,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import eu.europa.ec.euidi.verifier.presentation.component.ListItemLeadingContentDataUi
@@ -70,6 +77,18 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 
+// grøn 0xFF3C853C
+var bacgroundColor = Color.White
+
+val frameBrush = Brush.linearGradient(
+    colors = listOf(
+        Color(0x313C853C),
+        Color(0x193C853C),
+        Color(0x083C853C),
+    ),
+    tileMode = TileMode.Clamp
+)
+
 @Composable
 fun ShowDocumentsScreen(
     navController: NavController,
@@ -81,8 +100,8 @@ fun ShowDocumentsScreen(
         navigatableAction = ScreenNavigateAction.BACKABLE,
         toolBarConfig = ToolbarConfig(
             title = stringResource(Res.string.show_documents_screen_title),
-            backgroundColor = Color(0xFF3C853C),
-            textColor = Color.White
+            backgroundColor = bacgroundColor,
+            textColor = Color.Black
         ),
         onBack = {
             viewModel.setEvent(ShowDocumentViewModelContract.Event.OnBackClick)
@@ -98,7 +117,7 @@ fun ShowDocumentsScreen(
                 }
             )
         },
-        backgroundColor = Color(0xFF3C853C)
+        backgroundColor = Color.Transparent
     ) { padding ->
         ContentSuccess(
             state = state,
@@ -148,12 +167,12 @@ private fun StickyBottomSection(
 ) {
     Row(
         modifier = modifier
-            .background(Color(0xFF3C853C))
+            .background(bacgroundColor)
     ) {
         WrapStickyBottomContent(
             stickyBottomModifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF3C853C)),
+                .background(bacgroundColor),
             stickyBottomConfig = StickyBottomConfig(
                 type = StickyBottomType.OneButton(
                     config = rememberButtonConfig(
@@ -182,102 +201,122 @@ private fun ContentSuccess(
     onNavigationRequested: (ShowDocumentViewModelContract.Effect.Navigation) -> Unit,
     paddingValues: PaddingValues
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+    Box(
         modifier = Modifier
-            .background(Color(0xFF3C853C))
-            .padding(
-                top = 10.dp,
-                bottom = 10.dp,
-            )
             .fillMaxSize()
+            .background(Color.White)
+            .padding(paddingValues)
+            .padding(0.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White) // gradient frame background
+            .clip(RoundedCornerShape(16.dp))
+            .background(frameBrush) // inner surface
+            .border(1.dp, Color(0x1F3C853C), RoundedCornerShape(16.dp))
+            .padding(16.dp)
     ) {
-        Spacer(modifier = Modifier.height(50.dp))
-
-        var imageValue = ""
-        var over16value = false
-        var over16exist = false
-        var over18value = false
-        var over18exist = false
-        val bildeText = "Bilde"
-        val over16Text = "Over 16"
-        val over18Text = "Over 18"
-        //var claimsApproved: List<String> = emptyList()
-
-        state.items.forEach { document ->
-
-            document.uiClaims.forEach { claim ->
-                if (claim.overlineText == bildeText) {
-                    val data = claim.leadingContentData as ListItemLeadingContentDataUi.UserImage
-                    imageValue = data.userBase64Image
-                } else if (claim.overlineText == over16Text) {
-                    over16exist = true
-                    if (claim.mainContentData.toString().contains("yes")){
-                        over16value = true
-                    }
-                    //claimsApproved = claimsApproved.plus("Over 16")
-                }else if (claim.overlineText == over18Text) {
-                    over18exist = true
-                    if (claim.mainContentData.toString().contains("yes")){
-                        over18value = true
-                    }
-                    //claimsApproved = claimsApproved.plus("Over 18")
-                }
-            }
-        }
-
-        val bitmap = rememberBase64DecodedBitmap(base64Image = imageValue)
-        val mod = Modifier
-            //.padding(end = SIZE_SMALL.dp)
-            .size(300.dp)
-
-        WrapImage(
-            modifier = mod,
-            bitmap = bitmap,
-            contentDescription = stringResource(resource = Res.string.content_description_image_or_placeholder_icon)
-        )
-
-        Spacer(modifier = Modifier.height(30.dp))
 
         Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .background(Color.Transparent)
+                .padding(
+                    top = 10.dp,
+                    bottom = 10.dp,
+                )
+                .fillMaxSize()
         ) {
-            if (over16exist) {
-                if (over16value) {
-                    TextSection(
-                        text = "$over16Text år",
-                        textColor = Color.White,
-                        icon = Res.drawable.ic_check_mark,
-                        iconSize = Modifier.size(40.dp)
-                    )
-                }else {
-                    TextSection(
-                        text = "$over16Text år",
-                        textColor = Color(0xFFC94F4F),
-                        icon = Res.drawable.ic_error_icon,
-                        iconSize = Modifier.size(35.dp)
-                    )
+            Spacer(modifier = Modifier.height(50.dp))
+
+            var imageValue = ""
+            var over16value = false
+            var over16exist = false
+            var over18value = false
+            var over18exist = false
+            val bildeText = "Bilde"
+            val over16Text = "Over 16"
+            val over18Text = "Over 18"
+            //var claimsApproved: List<String> = emptyList()
+
+            state.items.forEach { document ->
+
+                document.uiClaims.forEach { claim ->
+                    if (claim.overlineText == bildeText) {
+                        val data = claim.leadingContentData as ListItemLeadingContentDataUi.UserImage
+                        imageValue = data.userBase64Image
+                    } else if (claim.overlineText == over16Text) {
+                        over16exist = true
+                        if (claim.mainContentData.toString().contains("yes")){
+                            over16value = true
+                        }
+                        //claimsApproved = claimsApproved.plus("Over 16")
+                    }else if (claim.overlineText == over18Text) {
+                        over18exist = true
+                        if (claim.mainContentData.toString().contains("yes")){
+                            over18value = true
+                        }
+                        //claimsApproved = claimsApproved.plus("Over 18")
+                    }
                 }
             }
 
-            if (over18exist) {
-                if (over18value) {
-                    TextSection(
-                        text = "$over18Text år",
-                        textColor = Color.White,
-                        icon = Res.drawable.ic_check_mark,
-                        iconSize = Modifier.size(40.dp)
-                    )
-                }else {
-                    TextSection(
-                        text = "$over18Text år",
-                        textColor = Color(0xFFC94F4F),
-                        icon = Res.drawable.ic_error_icon,
-                        iconSize = Modifier.size(35.dp)
-                    )
+            val bitmap = rememberBase64DecodedBitmap(base64Image = imageValue)
+            val mod = Modifier
+                //.padding(end = SIZE_SMALL.dp)
+                .size(300.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                    width = 1.dp,
+                    color = Color.Black,
+                    shape = RoundedCornerShape(12.dp))
+
+            WrapImage(
+                modifier = mod,
+                bitmap = bitmap,
+                contentDescription = stringResource(resource = Res.string.content_description_image_or_placeholder_icon)
+            )
+
+            Spacer(modifier = Modifier.height(30.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (over16exist) {
+                    if (over16value) {
+                        TextSection(
+                            text = "$over16Text år",
+                            textColor = Color(0xFF3C853C),
+                            icon = Res.drawable.ic_check_mark,
+                            iconSize = Modifier.size(50.dp)
+                        )
+                    }else {
+                        TextSection(
+                            text = "$over16Text år",
+                            textColor = Color(0xFFC94F4F),
+                            icon = Res.drawable.ic_error_icon,
+                            iconSize = Modifier.size(40.dp)
+                        )
+                    }
+                }
+
+                if (over18exist) {
+                    if (over18value) {
+                        TextSection(
+                            text = "$over18Text år",
+                            textColor = Color.Black,
+                            icon = Res.drawable.ic_check_mark,
+                            iconSize = Modifier.size(50.dp)
+                        )
+                    }else {
+                        TextSection(
+                            text = "$over18Text år",
+                            textColor = Color(0xFFC94F4F),
+                            icon = Res.drawable.ic_error_icon,
+                            iconSize = Modifier.size(40.dp)
+                        )
+                    }
                 }
             }
         }
@@ -307,8 +346,9 @@ private fun TextSection(
     ) {
         Text(
             text,
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = FontWeight.ExtraBold
+            style = MaterialTheme.typography.displaySmall.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 49.sp
             ),
             color = textColor,
             textAlign = TextAlign.Center,
