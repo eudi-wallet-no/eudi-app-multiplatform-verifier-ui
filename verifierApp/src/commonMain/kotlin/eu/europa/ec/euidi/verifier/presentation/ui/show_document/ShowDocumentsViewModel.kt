@@ -16,6 +16,7 @@
 
 package eu.europa.ec.euidi.verifier.presentation.ui.show_document
 
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewModelScope
 import eu.europa.ec.euidi.verifier.domain.interactor.ShowDocumentsInteractor
 import eu.europa.ec.euidi.verifier.presentation.architecture.MviViewModel
@@ -33,6 +34,7 @@ sealed interface ShowDocumentViewModelContract {
         val isLoading: Boolean = false,
         val items: List<DocumentUi> = emptyList(),
         val screenTitle: String = "",
+        val backgroundColor: Color = Color.White
     ) : UiState
 
     sealed interface Event : UiEvent {
@@ -81,7 +83,8 @@ class ShowDocumentsViewModel(
                         copy(
                             screenTitle = title,
                             items = transformedItems,
-                            isLoading = false
+                            isLoading = false,
+                            backgroundColor = Color.Green
                         )
                     }
                 }

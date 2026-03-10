@@ -16,6 +16,7 @@
 
 package eu.europa.ec.euidi.verifier.presentation.ui.home
 
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewModelScope
 import eu.europa.ec.euidi.verifier.domain.interactor.HomeInteractor
 import eu.europa.ec.euidi.verifier.presentation.architecture.MviViewModel
@@ -43,6 +44,8 @@ sealed interface HomeViewModelContract {
 
         val requestedDocs: List<RequestedDocumentUi> = emptyList(),
         val isStickyButtonEnabled: Boolean = false,
+
+        val backgroundColor: Color = Color.White
     ) : UiState
 
     sealed interface Event : UiEvent {

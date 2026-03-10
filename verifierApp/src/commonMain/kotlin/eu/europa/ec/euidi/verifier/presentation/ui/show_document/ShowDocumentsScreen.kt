@@ -16,14 +16,22 @@
 
 package eu.europa.ec.euidi.verifier.presentation.ui.show_document
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,36 +39,55 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import eu.europa.ec.euidi.verifier.presentation.component.ListItemLeadingContentDataUi
 import eu.europa.ec.euidi.verifier.presentation.component.content.ContentScreen
 import eu.europa.ec.euidi.verifier.presentation.component.content.ScreenNavigateAction
 import eu.europa.ec.euidi.verifier.presentation.component.content.ToolbarConfig
+import eu.europa.ec.euidi.verifier.presentation.component.rememberBase64DecodedBitmap
 import eu.europa.ec.euidi.verifier.presentation.component.utils.OneTimeLaunchedEffect
-import eu.europa.ec.euidi.verifier.presentation.component.utils.SPACING_EXTRA_LARGE
-import eu.europa.ec.euidi.verifier.presentation.component.utils.SPACING_MEDIUM
-import eu.europa.ec.euidi.verifier.presentation.component.utils.SPACING_SMALL
 import eu.europa.ec.euidi.verifier.presentation.component.wrap.ButtonType
 import eu.europa.ec.euidi.verifier.presentation.component.wrap.StickyBottomConfig
 import eu.europa.ec.euidi.verifier.presentation.component.wrap.StickyBottomType
-import eu.europa.ec.euidi.verifier.presentation.component.wrap.WrapCard
-import eu.europa.ec.euidi.verifier.presentation.component.wrap.WrapListItems
+import eu.europa.ec.euidi.verifier.presentation.component.wrap.WrapImage
 import eu.europa.ec.euidi.verifier.presentation.component.wrap.WrapStickyBottomContent
 import eu.europa.ec.euidi.verifier.presentation.component.wrap.rememberButtonConfig
 import eu.europa.ec.euidi.verifier.presentation.model.ReceivedDocsHolder
 import eu.europa.ec.euidi.verifier.presentation.navigation.getFromPreviousBackStack
-import eu.europa.ec.euidi.verifier.presentation.ui.show_document.model.DocumentUi
 import eu.europa.ec.euidi.verifier.presentation.utils.Constants
 import eudiverifier.verifierapp.generated.resources.Res
+import eudiverifier.verifierapp.generated.resources.content_description_check_icon
+import eudiverifier.verifierapp.generated.resources.content_description_image_or_placeholder_icon
 import eudiverifier.verifierapp.generated.resources.generic_ok
-import eudiverifier.verifierapp.generated.resources.show_documents_screen_document_header
-import eudiverifier.verifierapp.generated.resources.show_documents_screen_num_of_docs_description
+import eudiverifier.verifierapp.generated.resources.ic_check_mark
+import eudiverifier.verifierapp.generated.resources.ic_error_icon
 import eudiverifier.verifierapp.generated.resources.show_documents_screen_title
 import kotlinx.coroutines.flow.Flow
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
+
+// grøn 0xFF3C853C
+var bacgroundColor = Color.White
+
+val frameBrush = Brush.linearGradient(
+    colors = listOf(
+        Color(0x313C853C),
+        Color(0x193C853C),
+        Color(0x083C853C),
+    ),
+    tileMode = TileMode.Clamp
+)
 
 @Composable
 fun ShowDocumentsScreen(
@@ -72,7 +99,9 @@ fun ShowDocumentsScreen(
     ContentScreen(
         navigatableAction = ScreenNavigateAction.BACKABLE,
         toolBarConfig = ToolbarConfig(
-            title = stringResource(Res.string.show_documents_screen_title)
+            title = stringResource(Res.string.show_documents_screen_title),
+            backgroundColor = bacgroundColor,
+            textColor = Color.Black
         ),
         onBack = {
             viewModel.setEvent(ShowDocumentViewModelContract.Event.OnBackClick)
@@ -87,9 +116,10 @@ fun ShowDocumentsScreen(
                     viewModel.setEvent(ShowDocumentViewModelContract.Event.OnDoneClick)
                 }
             )
-        }
+        },
+        backgroundColor = Color.Transparent
     ) { padding ->
-        Content(
+        ContentSuccess(
             state = state,
             effectFlow = viewModel.effect,
             onNavigationRequested = { navigationEffect ->
@@ -137,9 +167,12 @@ private fun StickyBottomSection(
 ) {
     Row(
         modifier = modifier
+            .background(bacgroundColor)
     ) {
         WrapStickyBottomContent(
-            stickyBottomModifier = Modifier.fillMaxWidth(),
+            stickyBottomModifier = Modifier
+                .fillMaxWidth()
+                .background(bacgroundColor),
             stickyBottomConfig = StickyBottomConfig(
                 type = StickyBottomType.OneButton(
                     config = rememberButtonConfig(
@@ -157,32 +190,135 @@ private fun StickyBottomSection(
                 )
             )
         )
+
     }
 }
 
 @Composable
-private fun Content(
+private fun ContentSuccess(
     state: ShowDocumentViewModelContract.State,
     effectFlow: Flow<ShowDocumentViewModelContract.Effect>,
     onNavigationRequested: (ShowDocumentViewModelContract.Effect.Navigation) -> Unit,
     paddingValues: PaddingValues
 ) {
-    Column(
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
+            .background(Color.White)
             .padding(paddingValues)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(SPACING_EXTRA_LARGE.dp),
+            .padding(0.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White) // gradient frame background
+            .clip(RoundedCornerShape(16.dp))
+            .background(frameBrush) // inner surface
+            .border(1.dp, Color(0x1F3C853C), RoundedCornerShape(16.dp))
+            .padding(16.dp)
     ) {
-        DocumentsHeader(
-            size = state.items.size,
-        )
 
-        state.items.forEach { document ->
-            DocumentDetails(
-                document = document,
-                modifier = Modifier.fillMaxWidth()
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .background(Color.Transparent)
+                .padding(
+                    top = 10.dp,
+                    bottom = 10.dp,
+                )
+                .fillMaxSize()
+        ) {
+            Spacer(modifier = Modifier.height(50.dp))
+
+            var imageValue = ""
+            var over16value = false
+            var over16exist = false
+            var over18value = false
+            var over18exist = false
+            val bildeText = "Bilde"
+            val over16Text = "Over 16"
+            val over18Text = "Over 18"
+            //var claimsApproved: List<String> = emptyList()
+
+            state.items.forEach { document ->
+
+                document.uiClaims.forEach { claim ->
+                    if (claim.overlineText == bildeText) {
+                        val data = claim.leadingContentData as ListItemLeadingContentDataUi.UserImage
+                        imageValue = data.userBase64Image
+                    } else if (claim.overlineText == over16Text) {
+                        over16exist = true
+                        if (claim.mainContentData.toString().contains("yes")){
+                            over16value = true
+                        }
+                        //claimsApproved = claimsApproved.plus("Over 16")
+                    }else if (claim.overlineText == over18Text) {
+                        over18exist = true
+                        if (claim.mainContentData.toString().contains("yes")){
+                            over18value = true
+                        }
+                        //claimsApproved = claimsApproved.plus("Over 18")
+                    }
+                }
+            }
+
+            val bitmap = rememberBase64DecodedBitmap(base64Image = imageValue)
+            val mod = Modifier
+                //.padding(end = SIZE_SMALL.dp)
+                .size(300.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                    width = 1.dp,
+                    color = Color.Black,
+                    shape = RoundedCornerShape(12.dp))
+
+            WrapImage(
+                modifier = mod,
+                bitmap = bitmap,
+                contentDescription = stringResource(resource = Res.string.content_description_image_or_placeholder_icon)
             )
+
+            Spacer(modifier = Modifier.height(30.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (over16exist) {
+                    if (over16value) {
+                        TextSection(
+                            text = "$over16Text år",
+                            textColor = Color(0xFF3C853C),
+                            icon = Res.drawable.ic_check_mark,
+                            iconSize = Modifier.size(50.dp)
+                        )
+                    }else {
+                        TextSection(
+                            text = "$over16Text år",
+                            textColor = Color(0xFFC94F4F),
+                            icon = Res.drawable.ic_error_icon,
+                            iconSize = Modifier.size(40.dp)
+                        )
+                    }
+                }
+
+                if (over18exist) {
+                    if (over18value) {
+                        TextSection(
+                            text = "$over18Text år",
+                            textColor = Color.Black,
+                            icon = Res.drawable.ic_check_mark,
+                            iconSize = Modifier.size(50.dp)
+                        )
+                    }else {
+                        TextSection(
+                            text = "$over18Text år",
+                            textColor = Color(0xFFC94F4F),
+                            icon = Res.drawable.ic_error_icon,
+                            iconSize = Modifier.size(40.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -193,62 +329,38 @@ private fun Content(
             }
         }
     }
+
 }
 
 @Composable
-private fun DocumentsHeader(
-    size: Int,
+private fun TextSection(
+    text: String,
+    textColor: Color,
+    icon: DrawableResource,
+    iconSize: Modifier
 ) {
-    WrapCard(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier.padding(SPACING_MEDIUM.dp),
-            verticalArrangement = Arrangement.spacedBy(SPACING_MEDIUM.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Text(
-                text = buildAnnotatedString {
-                    append(stringResource(Res.string.show_documents_screen_num_of_docs_description))
-                    append(": ")
-                    append(size.toString())
-                },
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-@Composable
-private fun DocumentDetails(
-    document: DocumentUi,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(SPACING_MEDIUM.dp)
-    ) {
         Text(
-            text = buildAnnotatedString {
-                append(stringResource(Res.string.show_documents_screen_document_header))
-                append(": ")
-                append(document.docType)
-            },
-            style = MaterialTheme.typography.labelLarge
+            text,
+            style = MaterialTheme.typography.displaySmall.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 49.sp
+            ),
+            color = textColor,
+            textAlign = TextAlign.Center,
         )
 
-        WrapListItems(
-            modifier = Modifier.fillMaxWidth(),
-            items = document.validityInfo,
-            onItemClick = null,
-            mainContentVerticalPadding = SPACING_SMALL.dp
-        )
+        Spacer(modifier = Modifier.width(15.dp))
 
-        WrapListItems(
-            modifier = Modifier.fillMaxWidth(),
-            items = document.uiClaims,
-            onItemClick = null,
-            mainContentVerticalPadding = SPACING_MEDIUM.dp
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = stringResource(Res.string.content_description_check_icon),
+            tint = textColor,
+            modifier = iconSize
         )
     }
 }

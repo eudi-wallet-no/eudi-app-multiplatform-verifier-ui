@@ -17,6 +17,7 @@
 
 package eu.europa.ec.euidi.verifier.presentation.component.content
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,6 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarColors
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,6 +78,8 @@ data class ToolbarActionUi(
 
 data class ToolbarConfig(
     val title: String = "",
+    val backgroundColor: Color = Color.White,
+    val textColor: Color = Color.Black,
     val actions: List<ToolbarActionUi> = listOf()
 )
 
@@ -89,6 +94,7 @@ enum class ImePaddingConfig {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ContentScreen(
+    backgroundColor: Color? = null,
     modifier: Modifier = Modifier.fillMaxSize(),
     isLoading: Boolean = false,
     toolBarConfig: ToolbarConfig? = null,
@@ -198,8 +204,10 @@ fun ContentScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .navigationBarsPadding()
-                                .zIndex(Z_STICKY),
+                                .zIndex(Z_STICKY)
+                                .background(backgroundColor ?: Color.White),
                             contentAlignment = Alignment.Center
+
                         ) {
                             stickyBottomContent(
                                 stickyBottomPaddings(
@@ -236,7 +244,7 @@ private fun DefaultToolBar(
         title = {
             Text(
                 text = toolbarConfig?.title.orEmpty(),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = toolbarConfig?.textColor ?: MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -253,6 +261,7 @@ private fun DefaultToolBar(
                 ToolbarIcon(
                     toolbarAction = ToolbarActionUi(
                         icon = navigationIcon,
+                        customTint = toolbarConfig?.textColor,
                         onClick = {
                             onBack?.invoke()
                             keyboardController?.hide()
@@ -264,7 +273,13 @@ private fun DefaultToolBar(
         // Add toolbar actions.
         actions = {
             ToolBarActions(toolBarActions = toolbarConfig?.actions)
-        }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+            titleContentColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+            navigationIconContentColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+            actionIconContentColor = toolbarConfig?.backgroundColor ?: MaterialTheme.colorScheme.primary,
+        )
     )
 }
 
