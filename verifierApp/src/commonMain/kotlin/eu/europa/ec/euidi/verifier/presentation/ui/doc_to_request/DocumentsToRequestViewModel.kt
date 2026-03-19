@@ -59,6 +59,10 @@ sealed interface DocToRequestContract {
                 val requestedDocuments: List<RequestedDocumentUi> = emptyList()
             ) : Navigation
 
+            data class NavigateToTransferStatus(
+                val requestedDocuments: List<RequestedDocumentUi>
+            ) : Navigation
+
             data class NavigateToCustomRequestScreen(
                 val requestedDocuments: RequestedDocumentUi
             ) : Navigation
@@ -132,7 +136,7 @@ class DocumentsToRequestViewModel(
 
             DocToRequestContract.Event.OnDoneClick -> {
                 setEffect {
-                    DocToRequestContract.Effect.Navigation.NavigateToHomeScreen(
+                    DocToRequestContract.Effect.Navigation.NavigateToTransferStatus(
                         requestedDocuments = uiState.value.requestedDocuments
                     )
                 }

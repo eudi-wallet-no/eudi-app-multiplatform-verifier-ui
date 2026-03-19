@@ -22,6 +22,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import eu.europa.ec.euidi.verifier.core.controller.AndroidPlatformController
 import eu.europa.ec.euidi.verifier.core.controller.PlatformController
+import eu.europa.ec.euidi.verifier.core.provider.ActivityProvider
 import eu.europa.ec.euidi.verifier.presentation.ui.container.ContainerView
 import org.koin.android.ext.android.inject
 
@@ -32,10 +33,16 @@ class ContainerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        ActivityProvider.register(this)
         registerActivityWithPlatformController()
         setContent {
             ContainerView()
         }
+    }
+
+    override fun onDestroy() {
+        ActivityProvider.unregister(this)
+        super.onDestroy()
     }
 
     private fun registerActivityWithPlatformController() {

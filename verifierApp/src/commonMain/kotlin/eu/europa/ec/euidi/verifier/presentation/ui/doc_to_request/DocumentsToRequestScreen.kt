@@ -143,6 +143,15 @@ private fun handleNavigationEffect(
             )
         }
 
+        is DocToRequestContract.Effect.Navigation.NavigateToTransferStatus -> {
+            navController.popToAndSave<RequestedDocsHolder>(
+                destination = NavItem.Home,
+                key = Constants.REQUESTED_DOCUMENTS,
+                value = RequestedDocsHolder(items = navigationEffect.requestedDocuments)
+            )
+            navController.navigate(route = NavItem.TransferStatus(qrCode = "USE_NFC"))
+        }
+
         is DocToRequestContract.Effect.Navigation.NavigateToCustomRequestScreen -> {
             navController.saveToCurrentBackStack<RequestedDocumentUi>(
                 key = Constants.REQUESTED_DOCUMENTS,

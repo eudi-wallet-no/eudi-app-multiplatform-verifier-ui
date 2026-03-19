@@ -190,7 +190,12 @@ class TransferStatusViewModel(
                 handleStatus(status)
             }.launchIn(viewModelScope)
 
-            transferStatusInteractor.startEngagement(qrCode = qrCode)
+            // Check if NFC engagement should be used instead of QR
+            if (qrCode == "USE_NFC") {
+                transferStatusInteractor.startNfcEngagement()
+            } else {
+                transferStatusInteractor.startEngagement(qrCode = qrCode)
+            }
         }
     }
 
