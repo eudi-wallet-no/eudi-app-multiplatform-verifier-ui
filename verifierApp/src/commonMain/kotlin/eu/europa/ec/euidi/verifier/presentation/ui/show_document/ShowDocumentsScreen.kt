@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -71,6 +74,7 @@ import eudiverifier.verifierapp.generated.resources.generic_ok
 import eudiverifier.verifierapp.generated.resources.ic_check_mark
 import eudiverifier.verifierapp.generated.resources.ic_error_icon
 import eudiverifier.verifierapp.generated.resources.show_documents_screen_title
+import io.ktor.client.request.invoke
 import kotlinx.coroutines.flow.Flow
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -93,6 +97,12 @@ val frameBrush = Brush.linearGradient(
 fun ShowDocumentsScreen(
     navController: NavController,
     viewModel: ShowDocumentsViewModel = koinViewModel()
+    /*
+    ShowDocumentsViewModel(
+        interactor = TODO()
+    )
+    */
+
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -262,8 +272,8 @@ private fun ContentSuccess(
 
             val bitmap = rememberBase64DecodedBitmap(base64Image = imageValue)
             val mod = Modifier
-                //.padding(end = SIZE_SMALL.dp)
-                .size(300.dp)
+                .fillMaxWidth(0.7f)
+                .aspectRatio(1f)
                 .clip(RoundedCornerShape(12.dp))
                 .border(
                     width = 1.dp,
@@ -289,14 +299,14 @@ private fun ContentSuccess(
                             text = "$over16Text år",
                             textColor = Color(0xFF3C853C),
                             icon = Res.drawable.ic_check_mark,
-                            iconSize = Modifier.size(50.dp)
+                            iconSize = Modifier.size(60.dp)
                         )
                     }else {
                         TextSection(
                             text = "$over16Text år",
                             textColor = Color(0xFFC94F4F),
                             icon = Res.drawable.ic_error_icon,
-                            iconSize = Modifier.size(40.dp)
+                            iconSize = Modifier.size(50.dp)
                         )
                     }
                 }
@@ -307,14 +317,14 @@ private fun ContentSuccess(
                             text = "$over18Text år",
                             textColor = Color.Black,
                             icon = Res.drawable.ic_check_mark,
-                            iconSize = Modifier.size(50.dp)
+                            iconSize = Modifier.size(60.dp)
                         )
                     }else {
                         TextSection(
                             text = "$over18Text år",
                             textColor = Color(0xFFC94F4F),
                             icon = Res.drawable.ic_error_icon,
-                            iconSize = Modifier.size(40.dp)
+                            iconSize = Modifier.size(50.dp)
                         )
                     }
                 }
@@ -339,28 +349,27 @@ private fun TextSection(
     icon: DrawableResource,
     iconSize: Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.displaySmall.copy(
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 49.sp
-            ),
-            color = textColor,
-            textAlign = TextAlign.Center,
-        )
-
-        Spacer(modifier = Modifier.width(15.dp))
-
         Icon(
             painter = painterResource(icon),
             contentDescription = stringResource(Res.string.content_description_check_icon),
             tint = textColor,
             modifier = iconSize
+        )
+
+        Spacer(modifier = Modifier.width(15.dp))
+
+        Text(
+            text,
+            style = MaterialTheme.typography.displaySmall.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 60.sp
+            ),
+            color = textColor,
+            textAlign = TextAlign.Center,
         )
     }
 }
